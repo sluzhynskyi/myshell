@@ -14,14 +14,18 @@ include(cmake/config.cmake)
 # Project source compilation
 include_directories(inc)
 #add_library(operations SHARED src/operations.cpp inc/operations/operations.hpp)
-add_executable(add src/main.cpp)
+add_executable(myshell src/main.cpp)
 #target_link_libraries(add operations)
 
 # Add external packages
 find_package(Boost 1.71.0 COMPONENTS program_options REQUIRED)
+find_library(_READLINE_LIB readline)
+if (NOT _READLINE_LIB)
+    message(FATAL_ERROR "Not found libreadline.a")
+endif ()
 include_directories(${Boost_INCLUDE_DIR})
-target_link_libraries(add Boost::program_options)
-
+target_link_libraries(myshell Boost::program_options)
+target_link_libraries(myshell readline)
 # Sanitizers configuration
 if (ENABLE_SANITIZERS)
     set(SANITIZE_UNDEFINED ON)
