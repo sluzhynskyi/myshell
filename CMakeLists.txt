@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(adder CXX)
+project(myshell CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -13,9 +13,9 @@ include(cmake/config.cmake)
 
 # Project source compilation
 include_directories(inc)
-add_library(operations SHARED src/operations.cpp inc/operations/operations.hpp)
+#add_library(operations SHARED src/operations.cpp inc/operations/operations.hpp)
 add_executable(add src/main.cpp)
-target_link_libraries(add operations)
+#target_link_libraries(add operations)
 
 # Add external packages
 find_package(Boost 1.71.0 COMPONENTS program_options REQUIRED)
@@ -32,5 +32,5 @@ if (ENABLE_SANITIZERS)
     find_package(Sanitizers)
 
     # CMake targets to which apply sanitizers
-    add_sanitizers(operations add)
+#    add_sanitizers(operations add)
 endif ()
