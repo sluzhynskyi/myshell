@@ -31,7 +31,8 @@ int main(int argc, char **argv) {
         boost::split(args, comm, boost::is_any_of(" "));
         string victim_name = args[0];
         vector<const char *> arg_for_c;
-        for (const auto& s: args)
+        arg_for_c.reserve(args.size());
+        for (const auto &s: args)
             arg_for_c.push_back(s.c_str());
         arg_for_c.push_back(nullptr);
 
@@ -46,7 +47,7 @@ int main(int argc, char **argv) {
             waitpid(pid, &status, 0);
         } else {
             // We are the child
-            execvp(victim_name.c_str(), const_cast<char* const*>(arg_for_c.data()));
+            execvp(victim_name.c_str(), const_cast<char *const *>(arg_for_c.data()));
             cerr << "Parent: Failed to execute " << comm << " \n\tCode: " << errno << endl;
             exit(EXIT_FAILURE);   // exec never returns
         }
