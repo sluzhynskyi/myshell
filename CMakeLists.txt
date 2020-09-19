@@ -19,7 +19,7 @@ add_executable(myshell src/main.cpp)
 
 # Add external packages
 find_package(Boost 1.71.0 COMPONENTS program_options REQUIRED)
-find_library(Readline_LIBRARY readline)
+find_library(_READLINE_LIB readline)
 if (NOT _READLINE_LIB)
     message(FATAL_ERROR "Not found libreadline.a")
 endif ()
