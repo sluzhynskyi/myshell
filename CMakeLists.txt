@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 # Options
 option(WARNINGS_AS_ERRORS   "Treat compiler warnings as errors."    OFF)
 option(ENABLE_SANITIZERS    "Use sanitizers to detect errors."      OFF)
-option(ENABLE_CONAN         "Use Conan as a package manager."       OFF)
+option(ENABLE_CONAN         "Use Conan as a package manager."       ON)
 
 # Include fixed CMake configuration
 include(cmake/config.cmake)
