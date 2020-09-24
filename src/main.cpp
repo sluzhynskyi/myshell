@@ -50,15 +50,14 @@ int mexport();
 
 int main(int argc, char **argv) {
     std::string comm;
-
     int status;
-
     auto path_ptr = getenv("PATH");
     string path_var;
     if (path_ptr != nullptr)
         path_var = path_ptr;
     path_var += ":.";
     setenv("PATH", path_var.c_str(), 1);
+  
     while (1) {
         std::vector<string> args;
         char buff[FILENAME_MAX];
