@@ -36,10 +36,8 @@ void execute(int &status, vector<string> args);
 bool is_wildcard(string &s);
 
 int main(int argc, char **argv) {
-    std::string comm;
-    std::vector<string> args;
     int status;
-
+    std::string comm;
     auto path_ptr = getenv("PATH");
     string path_var;
     if (path_ptr != nullptr)
@@ -47,6 +45,7 @@ int main(int argc, char **argv) {
     path_var += ":.";
     setenv("PATH", path_var.c_str(), 1);
     do {
+        std::vector<string> args;
         comm = readline("myshell$ ");
         add_history(comm.c_str());
         parse_line(args, comm);
