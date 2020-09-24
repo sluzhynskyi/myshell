@@ -19,6 +19,7 @@
 
 using std::cout;
 using std::cerr;
+using std::flush;
 using std::endl;
 using std::string;
 using std::vector;
@@ -35,9 +36,21 @@ void execute(int &status, vector<string> args);
 
 bool is_wildcard(string &s);
 
+int merrno(int &status);
+
+int mpwd();
+
+int mcd(const char *path);
+
+int mexit(int status);
+
+int mecho(vector<string> texts);
+
+int mexport();
+
 int main(int argc, char **argv) {
     std::string comm;
-    std::vector<string> args;
+
     int status;
 
     auto path_ptr = getenv("PATH");
@@ -46,39 +59,74 @@ int main(int argc, char **argv) {
         path_var = path_ptr;
     path_var += ":.";
     setenv("PATH", path_var.c_str(), 1);
-    do {
-        comm = readline("myshell$ ");
+    while (1) {
+        std::vector<string> args;
+        char buff[FILENAME_MAX];
+        getcwd( buff, FILENAME_MAX );
+        cout << buff << flush;
+
+        comm = readline("$ ");
         add_history(comm.c_str());
+
         parse_line(args, comm);
         execute(status, args);
-    } while (status == 0);
+
+    }
     return 0;
 //    ps = parse(comm);
 
 }
 
 void execute(int &status, vector<string> args) {
-    string victim_name = args[0];
+    string program_name = args[0];
     vector<const char *> arg_for_c;
     arg_for_c.reserve(args.size());
     for (const auto &s: args)
         arg_for_c.push_back(s.c_str());
     arg_for_c.push_back(nullptr);
 
-    pid_t parent = getpid();
-    pid_t pid = fork();
-    if (pid == -1) {
-        std::cerr << "Failed to fork()" << std::endl;
-        status = -1;
-        exit(EXIT_FAILURE);
-    } else if (pid > 0) {
-        // We are parent process
-        waitpid(pid, &status, 0);
+    if (program_name == "merrno") {
+        merrno(status);
+    } else if (program_name == "mpwd") {
+        mpwd();
+    } else if (program_name == "mcd") {
+        if ( arg_for_c.size() == 3 ) {
+            mcd(arg_for_c[1]);
+        } else {
+            cerr << "Error: mcd() should receive one argument" << endl;
+            exit(EXIT_FAILURE);
+        }
+    } else if(program_name == "mexit") {
+        int exit_status = 0;
+        if ( arg_for_c.size() > 3 ) {
+            cerr << "Error: mcd() should receive one argument" << endl;
+            exit(EXIT_FAILURE);
+        } else if ( arg_for_c.size() == 3 ) {
+            exit_status = atoi(arg_for_c[1]);
+        }
+        mexit(exit_status);
+    } else if(program_name == "mecho") {
+        mecho(args);
+    } else if(program_name == "mexport") {
+        mexport();
     } else {
-        // We are the child
-        execvp(victim_name.c_str(), const_cast<char *const *>(arg_for_c.data()));
-        cerr << "Parent: Failed to execute " << victim_name << " \n\tCode: " << errno << endl;
-        exit(EXIT_FAILURE);   // exec never returns
+
+        pid_t parent = getpid();
+        pid_t pid = fork();
+        if (pid == -1) {
+            std::cerr << "Failed to fork()" << std::endl;
+            status = -1;
+            exit(EXIT_FAILURE);
+        } else if (pid > 0) {
+            // We are parent process
+            waitpid(pid, &status, 0);
+        } else {
+            // We are the child
+            execvp(program_name.c_str(), const_cast<char *const *>(arg_for_c.data()));
+            cerr << "Parent: Failed to execute " << program_name << " \n\tCode: " << errno << endl;
+            exit(EXIT_FAILURE);   // exec never returns
+        }
+
     }
 }
 
@@ -131,4 +179,56 @@ bool is_wildcard(string &s) {
         if (s.find(c) != string::npos) return true;
     }
     return false;
+}
+
+
+int merrno(int &status) {
+
+    cout << status << endl;
+    return 0;
+
+}
+
+int mpwd() {
+
+    char buff[FILENAME_MAX];
+    getcwd( buff, FILENAME_MAX );
+    cout << buff << endl;
+    return 0;
+
+}
+
+
+int mcd(const char *path) {
+
+    char *full_path = realpath(path, NULL);;
+    int status = chdir(full_path);
+    free(full_path);
+    return status;
+
+}
+
+
+int mexit(int status) {
+
+    exit(status);
+
+}
+
+
+int mecho(vector<string> texts) {
+
+    for (int i=1; i<texts.size(); i++) {
+        if (texts[i].at(i) == '$') {
+            // print env var
+        } else {
+            cout << texts[i] << " " << flush;
+        }
+    }
+    cout << endl;
+    return 0;
+}
+
+int mexport() {
+    return 0;
 }
