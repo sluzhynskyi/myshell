@@ -51,7 +51,6 @@ int mexport(string varname, string value);
 int main(int argc, char **argv) {
     std::string comm;
     int status;
-
     auto path_ptr = getenv("PATH");
     string path_var;
     if (path_ptr != nullptr)
