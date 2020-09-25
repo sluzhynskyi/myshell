@@ -46,11 +46,10 @@ int mexit(int status);
 
 int mecho(vector<string> texts);
 
-int mexport();
+int mexport(string varname, string value);
 
 int main(int argc, char **argv) {
     std::string comm;
-
     int status;
 
     auto path_ptr = getenv("PATH");
@@ -59,6 +58,7 @@ int main(int argc, char **argv) {
         path_var = path_ptr;
     path_var += ":.";
     setenv("PATH", path_var.c_str(), 1);
+
     while (1) {
         std::vector<string> args;
         char buff[FILENAME_MAX];
@@ -70,7 +70,6 @@ int main(int argc, char **argv) {
 
         parse_line(args, comm);
         execute(status, args);
-
     }
     return 0;
 //    ps = parse(comm);
@@ -86,30 +85,90 @@ void execute(int &status, vector<string> args) {
     arg_for_c.push_back(nullptr);
 
     if (program_name == "merrno") {
-        merrno(status);
-    } else if (program_name == "mpwd") {
-        mpwd();
-    } else if (program_name == "mcd") {
-        if ( arg_for_c.size() == 3 ) {
-            mcd(arg_for_c[1]);
+        if (std::find(args.begin(), args.end(), "-h") != args.end() || std::find(args.begin(), args.end(), "--help") != args.end())
+        {
+            cout << "\nmerrno [-h|--help]  – вивести код завершення останньої програми чи команди\n"
+                    "Повертає нуль, якщо ще жодна програма не виконувалася.\n" << endl;
         } else {
-            cerr << "Error: mcd() should receive one argument" << endl;
-            exit(EXIT_FAILURE);
+            if (args.size() == 1) {
+                status = merrno(status);
+            } else {
+                cerr << "Error: mpwd() should not receive any arguments" << endl;
+                status = 1;
+            }
+
         }
-    } else if(program_name == "mexit") {
-        int exit_status = 0;
-        if ( arg_for_c.size() > 3 ) {
-            cerr << "Error: mcd() should receive one argument" << endl;
-            exit(EXIT_FAILURE);
-        } else if ( arg_for_c.size() == 3 ) {
-            exit_status = atoi(arg_for_c[1]);
+    }
+    else if (program_name == "mpwd") {
+        if (std::find(args.begin(), args.end(), "-h") != args.end() || std::find(args.begin(), args.end(), "--help") != args.end())
+        {
+            cout << "\nmpwd [-h|--help] – вивести поточний шлях\n" << endl;
+        } else {
+            if (args.size() == 1) {
+                status = mpwd();
+            } else {
+                cerr << "Error: mpwd() should not receive any arguments" << endl;
+                status = 1;
+            }
         }
-        mexit(exit_status);
-    } else if(program_name == "mecho") {
-        mecho(args);
-    } else if(program_name == "mexport") {
-        mexport();
-    } else {
+    }
+    else if (program_name == "mcd") {
+        if (std::find(args.begin(), args.end(), "-h") != args.end() || std::find(args.begin(), args.end(), "--help") != args.end())
+        {
+            cout << "\nmcd <path> [-h|--help]  -- перейти до шляху <path>\n" << endl;
+        } else {
+            if (args.size() == 2) {
+                status = mcd(arg_for_c[1]);
+            } else {
+                cerr << "Error: mcd() should receive one argument" << endl;
+                status = 1;
+            }
+        }
+    }
+    else if(program_name == "mexit") {
+        if (std::find(args.begin(), args.end(), "-h") != args.end() || std::find(args.begin(), args.end(), "--help") != args.end())
+        {
+            cout << "\nmexit [код завершення] [-h|--help]  – вийти із myshell\n" << endl;
+        } else {
+            int exit_status = 0;
+            if (args.size() > 2) {
+                cerr << "Error: mexit() should receive one argument" << endl;
+                exit(EXIT_FAILURE);
+            } else if (args.size() == 2) {
+                exit_status = atoi(arg_for_c[1]);
+            }
+            mexit(exit_status);
+        }
+    }
+    else if(program_name == "mecho") {
+        if (std::find(args.begin(), args.end(), "-h") != args.end() || std::find(args.begin(), args.end(), "--help") != args.end())
+        {
+            cout << "\nmecho [-h|--help] [text|$<var_name>] [text|$<var_name>]  [text|$<var_name>] ...\n"
+                    "Якщо аргумент починається не з $ -- просто виводить його на консоль.\n"
+                    "Якщо з $ -- шукає відповідну змінну та виводить її вміст. Якщо такої змінної не існує -- не виводить нічого.\n" << endl;
+        } else {
+            status = mecho(args);
+        }
+    }
+    else if(program_name == "mexport") {
+        if (std::find(args.begin(), args.end(), "-h") != args.end() || std::find(args.begin(), args.end(), "--help") != args.end())
+        {
+            cout << "\nmexport var_name=VAL\n"
+                    "Додати глобальну змінну -- поміщається в блоку змінних середовища для дочірніх процесів.\n"
+                    "Виклик mexport var_name=    створює порожню змінну -- це не помилка.\n" << endl;
+        } else {
+            if (std::find(args.begin(), args.end(), "=") != args.end())
+            {
+                vector<string> envvar_args;
+                boost::split(envvar_args, args[1],boost::is_any_of("="));
+                status = mexport(envvar_args[0], envvar_args[1]);
+            } else {
+                cout << "Error: proper arguments should look like 'varname=val'" << endl;
+                status = 1;
+            }
+        }
+    }
+    else {
 
         pid_t parent = getpid();
         pid_t pid = fork();
@@ -204,6 +263,9 @@ int mcd(const char *path) {
     char *full_path = realpath(path, NULL);;
     int status = chdir(full_path);
     free(full_path);
+    if (status != 0) {
+        cout << "Error: no such directory" << endl;
+    }
     return status;
 
 }
@@ -219,16 +281,29 @@ int mexit(int status) {
 int mecho(vector<string> texts) {
 
     for (int i=1; i<texts.size(); i++) {
-        if (texts[i].at(i) == '$') {
+        if (texts[i].find("$") != string::npos)
+        {
+            vector<string> env_var_arg_parts;
+            boost::split(env_var_arg_parts, texts[i],boost::is_any_of("$"));
+            string env_var_name = env_var_arg_parts[1];
+            cout << env_var_arg_parts[0] << flush;
             // print env var
-        } else {
+            // cout << <env var value> << " " << flush;
+            // if no env vat print error and return 1;
+        }
+        else {
             cout << texts[i] << " " << flush;
         }
     }
     cout << endl;
     return 0;
+
 }
 
-int mexport() {
+int mexport(string varname, string value) {
+
+    // add value for varname
+    // if value is empty then create env var
     return 0;
+
 }
