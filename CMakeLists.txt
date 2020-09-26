@@ -26,7 +26,7 @@ endif ()
 include_directories(${Boost_INCLUDE_DIR})
 target_link_libraries(myshell Boost::program_options)
 target_link_libraries(myshell Boost::filesystem)
-#target_link_libraries(myshell Boost::algorithm)
+
 target_link_libraries(myshell readline)
 # Sanitizers configuration
 if (ENABLE_SANITIZERS)
