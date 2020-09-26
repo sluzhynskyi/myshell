@@ -24,7 +24,7 @@ if (NOT _READLINE_LIB)
     message(FATAL_ERROR "Not found libreadline.a")
 endif ()
 include_directories(${Boost_INCLUDE_DIR})
-target_link_libraries(myshell Boost::program_options -lboost_filesystem -lboost_system)
+target_link_libraries(myshell Boost::program_options)
 target_link_libraries(myshell readline)
 # Sanitizers configuration
 if (ENABLE_SANITIZERS)
