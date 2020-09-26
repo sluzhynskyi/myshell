@@ -3,4 +3,4 @@
 # libboost-all-dev is viable but not recommended
 libboost-program-options-dev
 libreadline-dev
-libboost_filesystem-dev
+libboost-filesystem-dev
