@@ -72,7 +72,6 @@ int main(int argc, char **argv) {
             execute(status, args);
     }
     return 0;
-//    ps = parse(comm);
 
 }
 
@@ -175,6 +174,7 @@ void execute(int &status, vector<string> args) {
             waitpid(pid, &status, 0);
         } else {
             // We are the child
+
             execvp(program_name.c_str(), const_cast<char *const *>(arg_for_c.data()));
             cerr << "Parent: Failed to execute " << program_name << " \n\tCode: " << errno << endl;
             exit(EXIT_FAILURE);   // exec never returns
@@ -289,9 +289,10 @@ int mecho(vector<string> texts) {
             boost::split(env_var_arg_parts, texts[i], boost::is_any_of("$"));
             string env_var_name = env_var_arg_parts[1];
             cout << env_var_arg_parts[0] << flush;
-            // print env var
-            // cout << <env var value> << " " << flush;
-            // if no env vat print error and return 1;
+            char *env_var_value = getenv(env_var_name.c_str());
+            if (env_var_value != 0) {
+                cout << env_var_value << " " << flush;
+            }
         } else {
             cout << texts[i] << " " << flush;
         }
@@ -303,8 +304,7 @@ int mecho(vector<string> texts) {
 
 int mexport(string varname, string value) {
 
-    // add value for varname
-    // if value is empty then create env var
-    return 0;
+    int status = setenv(varname.c_str(), value.c_str(), 1);
+    return status;
 
 }
