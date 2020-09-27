@@ -162,7 +162,42 @@ void execute(int &status, vector<string> args) {
                 status = 1;
             }
         }
-    } else {
+
+    } else if (program_name == "myshell") {
+            std::ifstream script_input(args[1]);
+
+            for( std::string script_line; getline( script_input, script_line ); )
+            {
+               std::vector<string> script_args;
+
+               parse_line(script_args, script_line);
+               if (!script_args.empty()) {
+                   string script_program_name = script_args[0];
+                   vector<const char *> script_arg_for_c;
+                   script_arg_for_c.reserve(script_args.size());
+                   for (const auto &s: script_args)
+                       script_arg_for_c.push_back(s.c_str());
+                   script_arg_for_c.push_back(nullptr);
+
+//                pid_t parent = getpid();
+                   pid_t script_pid = fork();
+                   if (script_pid == -1) {
+                       std::cerr << "Failed to fork()" << std::endl;
+                       status = -1;
+                       exit(EXIT_FAILURE);
+                   } else if (script_pid > 0) {
+                       // We are parent process
+                       waitpid(script_pid, &status, 0);
+                   } else {
+
+                       execvp(script_program_name.c_str(), const_cast<char *const *>(script_arg_for_c.data()));
+                       cerr << "Parent: Failed to execute " << script_program_name << " \n\tCode: " << errno << endl;
+                       exit(EXIT_FAILURE);   // exec never returns
+                   }
+               }
+            }
+    }
+    else {
 
         pid_t parent = getpid();
         pid_t pid = fork();
@@ -174,6 +209,9 @@ void execute(int &status, vector<string> args) {
             // We are parent process
             waitpid(pid, &status, 0);
         } else {
+
+
+
             // We are the child
             execvp(program_name.c_str(), const_cast<char *const *>(arg_for_c.data()));
             cerr << "Parent: Failed to execute " << program_name << " \n\tCode: " << errno << endl;
@@ -308,3 +346,5 @@ int mexport(string varname, string value) {
     return 0;
 
 }
+
+
