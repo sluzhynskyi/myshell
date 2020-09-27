@@ -57,16 +57,22 @@ int main(int argc, char **argv) {
         path_var = path_ptr;
     path_var += ":.";
     setenv("PATH", path_var.c_str(), 1);
+    std::ifstream script_input(argv[1]);
+
 
     while (1) {
-        std::vector<string> args;
-        char buff[FILENAME_MAX];
-        getcwd(buff, FILENAME_MAX);
-        cout << buff << flush;
+        std::vector <string> args;
 
-        comm = readline("$ ");
-        add_history(comm.c_str());
-
+        if (argc > 1) {
+            if (!getline( script_input, comm ))
+                break;
+        } else {
+            char buff[FILENAME_MAX];
+            getcwd(buff, FILENAME_MAX);
+            cout << buff << flush;
+            comm = readline("$ ");
+            add_history(comm.c_str());
+        }
         parse_line(args, comm);
         if (!args.empty())
             execute(status, args);
@@ -163,7 +169,7 @@ void execute(int &status, vector<string> args) {
             }
         }
 
-    } else if (program_name == "myshell") {
+    } else if (program_name == ".") {
             std::ifstream script_input(args[1]);
 
             for( std::string script_line; getline( script_input, script_line ); )
@@ -196,8 +202,7 @@ void execute(int &status, vector<string> args) {
                    }
                }
             }
-    }
-    else {
+    } else {
 
         pid_t parent = getpid();
         pid_t pid = fork();
