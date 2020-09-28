@@ -57,16 +57,22 @@ int main(int argc, char **argv) {
         path_var = path_ptr;
     path_var += ":.";
     setenv("PATH", path_var.c_str(), 1);
+    std::ifstream script_input(argv[1]);
+
 
     while (1) {
         std::vector<string> args;
-        char buff[FILENAME_MAX];
-        getcwd(buff, FILENAME_MAX);
-        cout << buff << flush;
 
-        comm = readline("$ ");
-        add_history(comm.c_str());
-
+        if (argc > 1) {
+            if (!getline(script_input, comm))
+                break;
+        } else {
+            char buff[FILENAME_MAX];
+            getcwd(buff, FILENAME_MAX);
+            cout << buff << flush;
+            comm = readline("$ ");
+            add_history(comm.c_str());
+        }
         parse_line(args, comm);
         if (!args.empty())
             execute(status, args);
@@ -162,9 +168,41 @@ void execute(int &status, vector<string> args) {
                 status = 1;
             }
         }
+
+    } else if (program_name == ".") {
+        std::ifstream script_input(args[1]);
+
+        for (std::string script_line; getline(script_input, script_line);) {
+            std::vector<string> script_args;
+
+            parse_line(script_args, script_line);
+            if (!script_args.empty()) {
+                string script_program_name = script_args[0];
+                vector<const char *> script_arg_for_c;
+                script_arg_for_c.reserve(script_args.size());
+                for (const auto &s: script_args)
+                    script_arg_for_c.push_back(s.c_str());
+                script_arg_for_c.push_back(nullptr);
+
+//                pid_t parent = getpid();
+                pid_t script_pid = fork();
+                if (script_pid == -1) {
+                    std::cerr << "Failed to fork()" << std::endl;
+                    status = -1;
+                    exit(EXIT_FAILURE);
+                } else if (script_pid > 0) {
+                    // We are parent process
+                    waitpid(script_pid, &status, 0);
+                } else {
+
+                    execvp(script_program_name.c_str(), const_cast<char *const *>(script_arg_for_c.data()));
+                    cerr << "Parent: Failed to execute " << script_program_name << " \n\tCode: " << errno << endl;
+                    exit(EXIT_FAILURE);   // exec never returns
+                }
+            }
+        }
     } else {
 
-        pid_t parent = getpid();
         pid_t pid = fork();
         if (pid == -1) {
             std::cerr << "Failed to fork()" << std::endl;
@@ -174,6 +212,9 @@ void execute(int &status, vector<string> args) {
             // We are parent process
             waitpid(pid, &status, 0);
         } else {
+
+
+
             // We are the child
             execvp(program_name.c_str(), const_cast<char *const *>(arg_for_c.data()));
             cerr << "Parent: Failed to execute " << program_name << " \n\tCode: " << errno << endl;
@@ -204,6 +245,10 @@ void parse_line(std::vector<string> &args, std::string &comm) {
         split(arg_with_eq, tmp[0], is_any_of("="));
         if (tmp.size() == 1 && arg_with_eq.size() == 2) {
             // TODO: Створення локальної змінної
+        }
+        if (starts_with(tmp[0], "./")) {
+            args.push_back("myshell");
+            args.push_back(tmp[0].substr(2));
         }
         args.push_back(tmp[0]);
         for (size_t i = 1; i < tmp.size(); ++i) {
@@ -283,7 +328,7 @@ int mexit(int status) {
 
 int mecho(vector<string> texts) {
 
-    for (int i = 1; i < texts.size(); i++) {
+    for (size_t i = 1; i < texts.size(); i++) {
         if (texts[i].find("$") != string::npos) {
             vector<string> env_var_arg_parts;
             boost::split(env_var_arg_parts, texts[i], boost::is_any_of("$"));
@@ -308,3 +353,5 @@ int mexport(string varname, string value) {
     return 0;
 
 }
+
+
