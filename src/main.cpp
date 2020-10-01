@@ -11,11 +11,11 @@
 #include <readline/history.h>
 // Syscalls
 #include <unistd.h>
-#include <sys/types.h>
 #include <sys/wait.h>
 
 #include <vector>
 #include <string>
+#include "commands/commands.hpp"
 
 using std::cout;
 using std::cerr;
@@ -32,21 +32,8 @@ typedef tokenizer<escaped_list_separator<char> > my_tokenizer;
 
 void parse_line(std::vector<string> &args, std::string &comm);
 
-void execute(int &status, vector<string> args);
-
 bool is_wildcard(string &s);
 
-int merrno(int &status);
-
-int mpwd();
-
-int mcd(const char *path);
-
-int mexit(int status);
-
-int mecho(vector<string> texts);
-
-int mexport(string varname, string value);
 
 int main(int argc, char **argv) {
     std::string comm;
@@ -212,10 +199,6 @@ void execute(int &status, vector<string> args) {
             // We are parent process
             waitpid(pid, &status, 0);
         } else {
-
-
-
-            // We are the child
             execvp(program_name.c_str(), const_cast<char *const *>(arg_for_c.data()));
             cerr << "Parent: Failed to execute " << program_name << " \n\tCode: " << errno << endl;
             exit(EXIT_FAILURE);   // exec never returns
@@ -271,6 +254,7 @@ void parse_line(std::vector<string> &args, std::string &comm) {
                     if (!wildcard_used) {
                         // TODO: Якщо таких файлів немає -- повідомити про помилку та не виконувати команду
                         // (merror після цього повинна виводити не нульове значення -- див. далі).
+                        break;
                     }
                 } else args.push_back(tmp[i]);
             } else args.push_back(tmp[i]);
@@ -287,71 +271,3 @@ bool is_wildcard(string &s) {
     }
     return false;
 }
-
-
-int merrno(int &status) {
-
-    cout << status << endl;
-    return 0;
-
-}
-
-int mpwd() {
-
-    char buff[FILENAME_MAX];
-    getcwd(buff, FILENAME_MAX);
-    cout << buff << endl;
-    return 0;
-
-}
-
-
-int mcd(const char *path) {
-
-    char *full_path = realpath(path, NULL);;
-    int status = chdir(full_path);
-    free(full_path);
-    if (status != 0) {
-        cout << "Error: no such directory" << endl;
-    }
-    return status;
-
-}
-
-
-int mexit(int status) {
-
-    exit(status);
-
-}
-
-
-int mecho(vector<string> texts) {
-
-    for (size_t i = 1; i < texts.size(); i++) {
-        if (texts[i].find("$") != string::npos) {
-            vector<string> env_var_arg_parts;
-            boost::split(env_var_arg_parts, texts[i], boost::is_any_of("$"));
-            string env_var_name = env_var_arg_parts[1];
-            cout << env_var_arg_parts[0] << flush;
-            // print env var
-            // cout << <env var value> << " " << flush;
-            // if no env vat print error and return 1;
-        } else {
-            cout << texts[i] << " " << flush;
-        }
-    }
-    cout << endl;
-    return 0;
-
-}
-
-int mexport(string varname, string value) {
-
-    // add value for varname
-    // if value is empty then create env var
-    return 0;
-
-}
-
-
