@@ -65,6 +65,7 @@ int main(int argc, char **argv) {
             execute(status, args);
     }
     return 0;
+//    ps = parse(comm);
 
 }
 
@@ -270,5 +271,3 @@ bool is_wildcard(string &s) {
     }
     return false;
 }
-
-
