@@ -30,10 +30,13 @@ using boost::tokenizer;
 using boost::escaped_list_separator;
 typedef tokenizer<escaped_list_separator<char> > my_tokenizer;
 
+void parse_commands(std::vector<string> &comm_args, std::string &comm);
+
 void parse_line(std::vector<string> &args, std::string &comm);
 
 bool is_wildcard(string &s);
 
+void comm_pipe(std::vector<string> &comm_args);
 
 int main(int argc, char **argv) {
     std::string comm;
@@ -48,8 +51,8 @@ int main(int argc, char **argv) {
 
 
     while (1) {
-        std::vector<string> args;
 
+//        vector<string> comm_args;
         if (argc > 1) {
             if (!getline(script_input, comm))
                 break;
@@ -60,9 +63,18 @@ int main(int argc, char **argv) {
             comm = readline("$ ");
             add_history(comm.c_str());
         }
-        parse_line(args, comm);
-        if (!args.empty())
-            execute(status, args);
+
+        // parse_commands(comm_args, comm);
+        vector<string> comm_args = {"ls", "wc"};
+        if ( comm_args.size() == 1 ) {
+            std::vector<string> args;
+            parse_line(args, comm);
+            if (!args.empty())
+                execute(status, args);
+        } else if ( comm_args.size() > 1 ) {
+            comm_pipe(comm_args);
+        }
+
     }
     return 0;
 //    ps = parse(comm);
@@ -263,6 +275,94 @@ void parse_line(std::vector<string> &args, std::string &comm) {
 
 }
 
+void comm_pipe(std::vector<string> &comm_args) {
+
+    const int comm_count = comm_args.size();
+    const int pipe_count = comm_count - 1;
+    // const int pipe_count = 5;
+    int pfd[2][2];
+
+    for (int j=0; j < pipe_count; j++) {
+        if (pipe(pfd[j]) == -1) {                      /* Create pipe */
+            cerr << "Error: Failed to create pipe" << endl;
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    for (int i=0; i < pipe_count+1; i++) {
+        std::vector<string> args;
+        int status;
+        switch (fork()) {
+            case -1:
+                cerr << "Error: Failed to fork process" << endl;
+                exit(EXIT_FAILURE);
+            case 0:             /* First child: exec 'ls' to write to pipe */
+                if (i != 0) {
+                    if (pfd[i][0] != STDIN_FILENO) {              /* Defensive check */
+                        if (dup2(pfd[i][0], STDIN_FILENO) == -1) {
+                            cerr << "Error: Failed to duplicate file descriptor" << endl;
+                            exit(EXIT_FAILURE);
+                        }
+                        if (close(pfd[i][0]) == -1) {
+                            cerr << "Error: Failed to close odd file descriptor" << endl;
+                            exit(EXIT_FAILURE);
+                        }
+                    }
+                } else {
+                    if (close(pfd[i][0]) == -1) {                  /* Read end is unused */
+                        cerr << "Error: Failed to close odd file descriptor" << endl;
+                        exit(EXIT_FAILURE);
+                    }
+                }
+
+                if (i != pipe_count) {
+                    if (pfd[i][1] != STDOUT_FILENO) {              /* Defensive check */
+                        if (dup2(pfd[i][1], STDOUT_FILENO) == -1) {
+                            cerr << "Error: Failed to duplicate file descriptor" << endl;
+                            exit(EXIT_FAILURE);
+                        }
+                        if (close(pfd[i][1]) == -1) {
+                            cerr << "Error: Failed to close odd file descriptor" << endl;
+                            exit(EXIT_FAILURE);
+                        }
+                    }
+                } else {
+                    if (close(pfd[i][1]) == -1) {                  /* Read end is unused */
+                        cerr << "Error: Failed to close odd file descriptor" << endl;
+                        exit(EXIT_FAILURE);
+                    }
+                }
+
+                parse_line(args, comm_args[0]);
+                if (!args.empty())
+                    execute(status, args);
+                cerr << "Error: Failed to execute command" << endl;
+                exit(EXIT_FAILURE);
+
+            default:            /* Parent falls through to create next child */
+                break;
+        }
+    }
+
+    for (int i=0; i < pipe_count; i++) {
+        if (close(pfd[i][0]) == -1) {
+            cerr << "Error: Failed to close odd file descriptor" << endl;
+            exit(EXIT_FAILURE);
+        }
+        if (close(pfd[i][1]) == -1) {
+            cerr << "Error: Failed to close odd file descriptor" << endl;
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    for (int i=0; i < pipe_count; i++) {
+        if (wait(NULL) == -1) {
+            cerr << "Error: Failed to close odd file descriptor" << endl;
+            exit(EXIT_FAILURE);
+        }
+    }
+
+}
 
 bool is_wildcard(string &s) {
     string p = "?[]()*";
