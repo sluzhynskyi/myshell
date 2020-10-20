@@ -68,7 +68,8 @@ int main(int argc, char **argv) {
         }
 
         // parse_commands(comm_args, comm);
-        vector<string> comm_args = {"ls", "wc"};
+        vector<string> comm_args = {"ls", "wc -l"};
+
         if ( comm_args.size() == 1 ) {
             std::vector<string> args;
             parse_line(args, comm);
@@ -296,11 +297,14 @@ void comm_pipe(std::vector<string> &comm_args) {
         std::vector<string> args;
         int status;
         switch (fork()) {
+
             case -1:
                 cerr << "Error: Failed to fork process" << endl;
                 exit(EXIT_FAILURE);
             case 0:
+
                 if (i != 0) {
+
                     if (pfd[i-1][0] != STDIN_FILENO) {
                         if (dup2(pfd[i-1][0], STDIN_FILENO) == -1) {
                             perror("Failed to duplicate file descriptor");
@@ -313,11 +317,12 @@ void comm_pipe(std::vector<string> &comm_args) {
                         }
                     }
                 } else {
-                    if (close(pfd[i-1][0]) == -1) {
+                    if (close(pfd[i][0]) == -1) {
                         cerr << "Error: Failed to close odd file descriptor" << endl;
                         exit(EXIT_FAILURE);
                     }
                 }
+
 
                 if (i != pipe_count) {
                     if (pfd[i][1] != STDOUT_FILENO) {
@@ -325,23 +330,27 @@ void comm_pipe(std::vector<string> &comm_args) {
                             cerr << "Error: Failed to duplicate file descriptor" << endl;
                             exit(EXIT_FAILURE);
                         }
+
                         if (close(pfd[i][1]) == -1) {
                             cerr << "Error: Failed to close odd file descriptor" << endl;
                             exit(EXIT_FAILURE);
                         }
                     }
+
                 } else {
-                    if (close(pfd[i][1]) == -1) {
+                    if (close(pfd[i-1][1]) == -1) {
                         cerr << "Error: Failed to close odd file descriptor" << endl;
                         exit(EXIT_FAILURE);
                     }
                 }
 
-                parse_line(args, comm_args[0]);
+
+                parse_line(args, comm_args[i]);
                 if (!args.empty())
                     execute(status, args);
-                cerr << "Error: Failed to execute command" << endl;
-                exit(EXIT_FAILURE);
+                //perror("Error: Failed to execute command");
+                //cerr << "Error: Failed to execute command" << endl;
+                exit(0);
 
             default:
                 break;
@@ -359,15 +368,15 @@ void comm_pipe(std::vector<string> &comm_args) {
         }
     }
 
-    for (int i=0; i < pipe_count; i++) {
+    for (int i=0; i < pipe_count+1; i++) {
         if (wait(NULL) == -1) {
             cerr << "Error: Failed to close odd file descriptor" << endl;
             exit(EXIT_FAILURE);
         }
     }
 
-    /*
-    int pfd[2];
+
+    /*int pfd[2];
 
     if (pipe(pfd) == -1) {
         cerr << "Error: Failed to close odd file descriptor" << endl;
