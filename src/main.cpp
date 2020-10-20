@@ -1,4 +1,5 @@
 #include <iostream>
+#include <cstdio>
 // Scripts
 #include <boost/program_options.hpp>
 #include <boost/filesystem.hpp>
@@ -23,6 +24,8 @@ using std::flush;
 using std::endl;
 using std::string;
 using std::vector;
+
+using std::perror;
 
 using namespace boost::filesystem;
 using namespace boost::algorithm;
@@ -277,13 +280,13 @@ void parse_line(std::vector<string> &args, std::string &comm) {
 
 void comm_pipe(std::vector<string> &comm_args) {
 
-    const int comm_count = comm_args.size();
-    const int pipe_count = comm_count - 1;
-    // const int pipe_count = 5;
-    int pfd[2][2];
+//    const int comm_count = comm_args.size();
+//    const int pipe_count = comm_count - 1;
+    const int pipe_count = 1;
+    int pfd[pipe_count][2];
 
     for (int j=0; j < pipe_count; j++) {
-        if (pipe(pfd[j]) == -1) {                      /* Create pipe */
+        if (pipe(pfd[j]) == -1) {
             cerr << "Error: Failed to create pipe" << endl;
             exit(EXIT_FAILURE);
         }
@@ -296,27 +299,28 @@ void comm_pipe(std::vector<string> &comm_args) {
             case -1:
                 cerr << "Error: Failed to fork process" << endl;
                 exit(EXIT_FAILURE);
-            case 0:             /* First child: exec 'ls' to write to pipe */
+            case 0:
                 if (i != 0) {
-                    if (pfd[i][0] != STDIN_FILENO) {              /* Defensive check */
-                        if (dup2(pfd[i][0], STDIN_FILENO) == -1) {
-                            cerr << "Error: Failed to duplicate file descriptor" << endl;
+                    if (pfd[i-1][0] != STDIN_FILENO) {
+                        if (dup2(pfd[i-1][0], STDIN_FILENO) == -1) {
+                            perror("Failed to duplicate file descriptor");
+                            // cerr << "Error: Failed to duplicate file descriptor" << endl;
                             exit(EXIT_FAILURE);
                         }
-                        if (close(pfd[i][0]) == -1) {
+                        if (close(pfd[i-1][0]) == -1) {
                             cerr << "Error: Failed to close odd file descriptor" << endl;
                             exit(EXIT_FAILURE);
                         }
                     }
                 } else {
-                    if (close(pfd[i][0]) == -1) {                  /* Read end is unused */
+                    if (close(pfd[i-1][0]) == -1) {
                         cerr << "Error: Failed to close odd file descriptor" << endl;
                         exit(EXIT_FAILURE);
                     }
                 }
 
                 if (i != pipe_count) {
-                    if (pfd[i][1] != STDOUT_FILENO) {              /* Defensive check */
+                    if (pfd[i][1] != STDOUT_FILENO) {
                         if (dup2(pfd[i][1], STDOUT_FILENO) == -1) {
                             cerr << "Error: Failed to duplicate file descriptor" << endl;
                             exit(EXIT_FAILURE);
@@ -327,7 +331,7 @@ void comm_pipe(std::vector<string> &comm_args) {
                         }
                     }
                 } else {
-                    if (close(pfd[i][1]) == -1) {                  /* Read end is unused */
+                    if (close(pfd[i][1]) == -1) {
                         cerr << "Error: Failed to close odd file descriptor" << endl;
                         exit(EXIT_FAILURE);
                     }
@@ -339,7 +343,7 @@ void comm_pipe(std::vector<string> &comm_args) {
                 cerr << "Error: Failed to execute command" << endl;
                 exit(EXIT_FAILURE);
 
-            default:            /* Parent falls through to create next child */
+            default:
                 break;
         }
     }
@@ -362,6 +366,111 @@ void comm_pipe(std::vector<string> &comm_args) {
         }
     }
 
+    /*
+    int pfd[2];
+
+    if (pipe(pfd) == -1) {
+        cerr << "Error: Failed to close odd file descriptor" << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    switch (fork()) {
+        case -1:
+
+            cerr << "Error: Failed to close odd file descriptor" << endl;
+            exit(EXIT_FAILURE);
+
+
+        case 0:
+            if (close(pfd[0]) == -1)
+            {
+                cerr << "Error: Failed to close odd file descriptor" << endl;
+                exit(EXIT_FAILURE);
+            }
+
+
+
+            if (pfd[1] != STDOUT_FILENO) {
+                if (dup2(pfd[1], STDOUT_FILENO) == -1)
+                {
+                    cerr << "Error: Failed to close odd file descriptor" << endl;
+                    exit(EXIT_FAILURE);
+                }
+                if (close(pfd[1]) == -1)
+                {
+                    cerr << "Error: Failed to close odd file descriptor" << endl;
+                    exit(EXIT_FAILURE);
+                }
+            }
+
+            execlp("ls", "ls", (char *) NULL);
+            cerr << "Error: Failed to close odd file descriptor" << endl;
+            exit(EXIT_FAILURE);
+
+        default:
+            break;
+    }
+
+    switch (fork()) {
+        case -1:
+            cerr << "Error: Failed to close odd file descriptor" << endl;
+            exit(EXIT_FAILURE);
+
+
+        case 0:
+            if (close(pfd[1]) == -1)
+            {
+                cerr << "Error: Failed to close odd file descriptor" << endl;
+                exit(EXIT_FAILURE);
+            }
+
+
+
+            if (pfd[0] != STDIN_FILENO) {
+                if (dup2(pfd[0], STDIN_FILENO) == -1)
+                {
+                    cerr << "Error: Failed to close odd file descriptor" << endl;
+                    exit(EXIT_FAILURE);
+                }
+                if (close(pfd[0]) == -1)
+                {
+                    cerr << "Error: Failed to close odd file descriptor" << endl;
+                    exit(EXIT_FAILURE);
+                }
+            }
+
+            execlp("wc", "wc", "-l", (char *) NULL);
+            cerr << "Error: Failed to close odd file descriptor" << endl;
+            exit(EXIT_FAILURE);
+
+        default:
+            break;
+    }
+
+
+
+    if (close(pfd[0]) == -1)
+    {
+        cerr << "Error: Failed to close odd file descriptor" << endl;
+        exit(EXIT_FAILURE);
+    }
+    if (close(pfd[1]) == -1)
+    {
+        cerr << "Error: Failed to close odd file descriptor" << endl;
+        exit(EXIT_FAILURE);
+    }
+    if (wait(NULL) == -1)
+    {
+        cerr << "Error: Failed to close odd file descriptor" << endl;
+        exit(EXIT_FAILURE);
+    }
+    if (wait(NULL) == -1)
+    {
+        cerr << "Error: Failed to close odd file descriptor" << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    exit(EXIT_SUCCESS);*/
 }
 
 bool is_wildcard(string &s) {
