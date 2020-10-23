@@ -31,15 +31,15 @@ using namespace boost::filesystem;
 using namespace boost::algorithm;
 using boost::tokenizer;
 using boost::escaped_list_separator;
-typedef tokenizer<escaped_list_separator<char> > my_tokenizer;
+typedef tokenizer <escaped_list_separator<char>> my_tokenizer;
 
-void parse_commands(std::vector<string> &comm_args, std::string &comm);
+void parse_commands(std::vector <string> &comm_args, std::string &comm, std::vector <string> &delimiters);
 
-void parse_line(std::vector<string> &args, std::string &comm);
+void parse_line(std::vector <string> &args, std::string &comm);
 
 bool is_wildcard(string &s);
 
-void comm_pipe(std::vector<string> &comm_args);
+void comm_pipe(std::vector <string> &comm_args);
 
 int main(int argc, char **argv) {
     std::string comm;
@@ -68,15 +68,15 @@ int main(int argc, char **argv) {
         }
 
         // TODO write parse_commands() to find |, > and < in comm string, split commands by them and write them into comm_args
-        // parse_commands(comm_args, comm);
-        vector<string> comm_args = {"ls", "wc -l", "wc"}; // to test | delimiter
+//        parse_commands(comm_args, comm);
+        vector <string> comm_args = {"ls", "wc -l", "wc"}; // to test | delimiter
 
-        if ( comm_args.size() == 1 ) {
-            std::vector<string> args;
+        if (comm_args.size() == 1) {
+            std::vector <string> args;
             parse_line(args, comm);
             if (!args.empty())
                 execute(status, args);
-        } else if ( comm_args.size() > 1 ) {
+        } else if (comm_args.size() > 1) {
             comm_pipe(comm_args);
         }
     }
@@ -85,7 +85,7 @@ int main(int argc, char **argv) {
 
 }
 
-void execute(int &status, vector<string> args) {
+void execute(int &status, vector <string> args) {
     string program_name = args[0];
     vector<const char *> arg_for_c;
     arg_for_c.reserve(args.size());
@@ -163,7 +163,7 @@ void execute(int &status, vector<string> args) {
                     "Виклик mexport var_name=    створює порожню змінну -- це не помилка.\n" << endl;
         } else {
             if (args.size() < 3) {
-                vector<string> envvar_args;
+                vector <string> envvar_args;
                 boost::split(envvar_args, args[1], boost::is_any_of("="));
                 status = mexport(envvar_args[0], envvar_args[1]);
             } else {
@@ -176,7 +176,7 @@ void execute(int &status, vector<string> args) {
         std::ifstream script_input(args[1]);
 
         for (std::string script_line; getline(script_input, script_line);) {
-            std::vector<string> script_args;
+            std::vector <string> script_args;
 
             parse_line(script_args, script_line);
             if (!script_args.empty()) {
@@ -223,9 +223,23 @@ void execute(int &status, vector<string> args) {
     }
 }
 
-void parse_line(std::vector<string> &args, std::string &comm) {
-    vector<string> tmp;
-    vector<string> arg_with_eq;
+void parse_commands(std::vector <string> &comm_args, std::string &comm, std::vector <string> &delimiters) {
+    string const delims{"|<>"};
+    boost::algorithm::trim(comm);
+    size_t beg, pos = 0;
+    while ((beg = comm.find_first_not_of(delims, pos)) != std::string::npos) {
+        pos = comm.find_first_of(delims, beg + 1);
+        comm_args.push_back(comm.substr(beg, pos - beg));
+        if (pos < comm.size()) {
+            delimiters.push_back(comm.substr(pos, 1));
+        }
+    }
+}
+
+
+void parse_line(std::vector <string> &args, std::string &comm) {
+    vector <string> tmp;
+    vector <string> arg_with_eq;
     path p;
     std::string filename;
     std::string dir;
@@ -279,25 +293,25 @@ void parse_line(std::vector<string> &args, std::string &comm) {
 
 }
 
-void comm_pipe(std::vector<string> &comm_args) {
+void comm_pipe(std::vector <string> &comm_args) {
 
     const int comm_count = comm_args.size();
     const int pipe_count = comm_count - 1;
 
-    int** pfd = new int*[pipe_count];
-    for(int i = 0; i < pipe_count; ++i)
+    int **pfd = new int *[pipe_count];
+    for (int i = 0; i < pipe_count; ++i)
         pfd[i] = new int[2];
 
 
-    for (int j=0; j < pipe_count; j++) {
+    for (int j = 0; j < pipe_count; j++) {
         if (pipe(pfd[j]) == -1) {
             cerr << "Error: Failed to create pipe" << endl;
             exit(EXIT_FAILURE);
         }
     }
 
-    for (int i=0; i < pipe_count+1; i++) {
-        std::vector<string> args;
+    for (int i = 0; i < pipe_count + 1; i++) {
+        std::vector <string> args;
         int status;
         switch (fork()) {
 
@@ -306,8 +320,8 @@ void comm_pipe(std::vector<string> &comm_args) {
                 exit(EXIT_FAILURE);
             case 0:
                 if (i != 0) {
-                    if (pfd[i-1][0] != STDIN_FILENO) {
-                        if (dup2(pfd[i-1][0], STDIN_FILENO) == -1) {
+                    if (pfd[i - 1][0] != STDIN_FILENO) {
+                        if (dup2(pfd[i - 1][0], STDIN_FILENO) == -1) {
                             perror("Failed to duplicate file descriptor");
                             cerr << "Error: Failed to duplicate file descriptor" << endl;
                             exit(EXIT_FAILURE);
@@ -324,17 +338,17 @@ void comm_pipe(std::vector<string> &comm_args) {
                     }
                 }
 
-                if ( i != 0 ) {
-                    if (close(pfd[i-1][1]) == -1) {
+                if (i != 0) {
+                    if (close(pfd[i - 1][1]) == -1) {
                         cerr << "Error: Failed to close odd file descriptor" << endl;
                         exit(EXIT_FAILURE);
                     }
-                    if (close(pfd[i-1][0]) == -1) {
+                    if (close(pfd[i - 1][0]) == -1) {
                         cerr << "Error: Failed to close odd file descriptor" << endl;
                         exit(EXIT_FAILURE);
                     }
                 }
-                if ( i != pipe_count ) {
+                if (i != pipe_count) {
                     if (close(pfd[i][0]) == -1) {
                         cerr << "Error: Failed to close odd file descriptor" << endl;
                         exit(EXIT_FAILURE);
@@ -353,7 +367,7 @@ void comm_pipe(std::vector<string> &comm_args) {
                 exit(0);
 
             default:
-                if ( i != 0 ) {
+                if (i != 0) {
                     if (close(pfd[i - 1][0]) == -1) {
                         cerr << "Error: Failed to close odd file descriptor" << endl;
                         exit(EXIT_FAILURE);
@@ -368,7 +382,7 @@ void comm_pipe(std::vector<string> &comm_args) {
     }
 
 
-    for (int i=0; i < pipe_count+1; i++) {
+    for (int i = 0; i < pipe_count + 1; i++) {
         if (wait(NULL) == -1) {
             cerr << "Error: Failed to close odd file descriptor" << endl;
             exit(EXIT_FAILURE);
