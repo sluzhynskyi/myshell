@@ -81,7 +81,6 @@ int main(int argc, char **argv) {
         }
     }
     return 0;
-//    ps = parse(comm);
 
 }
 
@@ -226,25 +225,34 @@ void execute(int &status, vector <string> args) {
 void parse_commands(std::vector <string> &comm_args, std::string &comm, std::vector <string> &delimiters) {
     vector<string> const delims{"|", "<", ">", "2>", "&>", "2>&1"};
     boost::algorithm::trim(comm);
-    //////// rewrite this
+    vector<string> temp_args;
+    boost::split(temp_args, comm, boost::is_any_of(" \t"));
+    string temp_str;
+    for (int i = 0; unsigned(i) < temp_args.size(); i++) {
+        if (unsigned(i) == temp_args.size() - 1) {
+            if (std::find(delims.begin(), delims.end(), temp_args[i]) != delims.end()) {
+                delimiters.push_back(temp_args[i]);
 
-    size_t beg, pos = 0;
-    while ((beg = comm.find_first_not_of(delims.begin(), delims.end(), pos)) != std::string::npos) {
-        pos = comm.find_first_of(delims.begin(), delims.end(), beg + 1);
-        string temp = comm.substr(beg, pos - beg);
-        boost::algorithm::trim(temp);
-        comm_args.push_back(temp);
-        if (pos < comm.size()) {
-            delimiters.push_back(comm.substr(pos, 1));
+            } else {
+                temp_str += temp_args[i];
+                comm_args.push_back(temp_str);
+            }
+        } else if (std::find(delims.begin(), delims.end(), temp_args[i]) != delims.end()) {
+            boost::algorithm::trim(temp_str);
+            comm_args.push_back(temp_str);
+            delimiters.push_back(temp_args[i]);
+            temp_str = "";
+        } else {
+            temp_str += temp_args[i];
+            temp_str += " ";
         }
     }
-    /////////
 
-    if (comm_args[comm_args.size()-1].find('&') != string::npos ) {
+    if (comm_args[comm_args.size()-1].find('&') != string::npos  && comm_args[comm_args.size()-1] != "&") {
         vector<string> temp_vec;
-        boost::split(temp_vec,comm_args[comm_args.size()-1],boost::is_any_of(" \t"));
+        boost::split(temp_vec,comm_args[comm_args.size()-1],boost::is_any_of("&"));
         comm_args[comm_args.size()-1] = temp_vec[0];
-        comm_args.push_back(temp_vec[1]);
+        comm_args.emplace_back("&");
     }
 }
 
@@ -401,7 +409,6 @@ void comm_pipe(vector <string> &comm_args, vector<string> &delimiters) {
                             close(fd);
                         }
                     }
-
 
                     parse_line(args, comm_args[i]);
                     if (!args.empty())
