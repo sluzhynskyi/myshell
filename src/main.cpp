@@ -13,6 +13,7 @@
 // Syscalls
 #include <unistd.h>
 #include <sys/wait.h>
+#include <sys/file.h>
 
 #include <vector>
 #include <string>
@@ -33,13 +34,13 @@ using boost::tokenizer;
 using boost::escaped_list_separator;
 typedef tokenizer <escaped_list_separator<char>> my_tokenizer;
 
-void parse_commands(std::vector <string> &comm_args, std::string &comm, std::vector <string> &delimiters);
+void parse_commands(vector<string> &comm_args, string &comm, vector<string> &delimiters);
 
 void parse_line(std::vector <string> &args, std::string &comm);
 
 bool is_wildcard(string &s);
 
-void comm_pipe(std::vector <string> &comm_args);
+void comm_pipe(std::vector <string> &comm_args, vector<string> &delimiters);
 
 int main(int argc, char **argv) {
     std::string comm;
@@ -55,7 +56,8 @@ int main(int argc, char **argv) {
 
     while (1) {
 
-//        vector<string> comm_args;
+        vector<string> comm_args;
+        vector<string> delimiters;
         if (argc > 1) {
             if (!getline(script_input, comm))
                 break;
@@ -67,21 +69,18 @@ int main(int argc, char **argv) {
             add_history(comm.c_str());
         }
 
-        // TODO write parse_commands() to find |, > and < in comm string, split commands by them and write them into comm_args
-//        parse_commands(comm_args, comm);
-        vector <string> comm_args = {"ls", "wc -l", "wc"}; // to test | delimiter
+        parse_commands(comm_args, comm, delimiters);
 
-        if (comm_args.size() == 1) {
+        if (delimiters.empty()) {
             std::vector <string> args;
             parse_line(args, comm);
             if (!args.empty())
                 execute(status, args);
         } else if (comm_args.size() > 1) {
-            comm_pipe(comm_args);
+            comm_pipe(comm_args, delimiters);
         }
     }
     return 0;
-//    ps = parse(comm);
 
 }
 
@@ -224,15 +223,36 @@ void execute(int &status, vector <string> args) {
 }
 
 void parse_commands(std::vector <string> &comm_args, std::string &comm, std::vector <string> &delimiters) {
-    string const delims{"|<>"};
+    vector<string> const delims{"|", "<", ">", "2>", "&>", "2>&1"};
     boost::algorithm::trim(comm);
-    size_t beg, pos = 0;
-    while ((beg = comm.find_first_not_of(delims, pos)) != std::string::npos) {
-        pos = comm.find_first_of(delims, beg + 1);
-        comm_args.push_back(comm.substr(beg, pos - beg));
-        if (pos < comm.size()) {
-            delimiters.push_back(comm.substr(pos, 1));
+    vector<string> temp_args;
+    boost::split(temp_args, comm, boost::is_any_of(" \t"));
+    string temp_str;
+    for (int i = 0; unsigned(i) < temp_args.size(); i++) {
+        if (unsigned(i) == temp_args.size() - 1) {
+            if (std::find(delims.begin(), delims.end(), temp_args[i]) != delims.end()) {
+                delimiters.push_back(temp_args[i]);
+
+            } else {
+                temp_str += temp_args[i];
+                comm_args.push_back(temp_str);
+            }
+        } else if (std::find(delims.begin(), delims.end(), temp_args[i]) != delims.end()) {
+            boost::algorithm::trim(temp_str);
+            comm_args.push_back(temp_str);
+            delimiters.push_back(temp_args[i]);
+            temp_str = "";
+        } else {
+            temp_str += temp_args[i];
+            temp_str += " ";
         }
+    }
+
+    if (comm_args[comm_args.size()-1].find('&') != string::npos  && comm_args[comm_args.size()-1] != "&") {
+        vector<string> temp_vec;
+        boost::split(temp_vec,comm_args[comm_args.size()-1],boost::is_any_of("&"));
+        comm_args[comm_args.size()-1] = temp_vec[0];
+        comm_args.emplace_back("&");
     }
 }
 
@@ -293,9 +313,10 @@ void parse_line(std::vector <string> &args, std::string &comm) {
 
 }
 
-void comm_pipe(std::vector <string> &comm_args) {
+void comm_pipe(vector <string> &comm_args, vector<string> &delimiters) {
 
-    const int comm_count = comm_args.size();
+    const int comm_count = comm_args[comm_args.size() - 1] == "&" ? comm_args.size() - 1 : comm_args.size();
+
     const int pipe_count = comm_count - 1;
 
     int **pfd = new int *[pipe_count];
@@ -311,7 +332,7 @@ void comm_pipe(std::vector <string> &comm_args) {
     }
 
     for (int i = 0; i < pipe_count + 1; i++) {
-        std::vector <string> args;
+        std::vector<string> args;
         int status;
         switch (fork()) {
 
@@ -319,61 +340,89 @@ void comm_pipe(std::vector <string> &comm_args) {
                 cerr << "Error: Failed to fork process" << endl;
                 exit(EXIT_FAILURE);
             case 0:
-                if (i != 0) {
-                    if (pfd[i - 1][0] != STDIN_FILENO) {
-                        if (dup2(pfd[i - 1][0], STDIN_FILENO) == -1) {
-                            perror("Failed to duplicate file descriptor");
-                            cerr << "Error: Failed to duplicate file descriptor" << endl;
+                if (!(i == pipe_count && delimiters[i-1] != "|")) {
+                    if (i != 0) {
+                        if (close(pfd[i - 1][1]) == -1) {
+                            cerr << "Error: Failed to close odd file descriptor" << endl;
+                            exit(EXIT_FAILURE);
+                        }
+                        if (pfd[i - 1][0] != STDIN_FILENO) {
+                            if (dup2(pfd[i - 1][0], STDIN_FILENO) == -1) {
+                                perror("Failed to duplicate file descriptor");
+                                cerr << "Error: Failed to duplicate file descriptor" << endl;
+                                exit(EXIT_FAILURE);
+                            }
+                        }
+                        if (close(pfd[i - 1][0]) == -1) {
+                            cerr << "Error: Failed to close odd file descriptor" << endl;
                             exit(EXIT_FAILURE);
                         }
                     }
-                }
 
-                if (i != pipe_count) {
-                    if (pfd[i][1] != STDOUT_FILENO) {
-                        if (dup2(pfd[i][1], STDOUT_FILENO) == -1) {
-                            cerr << "Error: Failed to duplicate file descriptor" << endl;
-                            exit(EXIT_FAILURE);
+                    if (i != pipe_count) {
+                        if (delimiters[i] == "|") {
+                            if (close(pfd[i][0]) == -1) {
+                                cerr << "Error: Failed to close odd file descriptor" << endl;
+                                exit(EXIT_FAILURE);
+                            }
+                            if (pfd[i][1] != STDOUT_FILENO) {
+                                if (dup2(pfd[i][1], STDOUT_FILENO) == -1) {
+                                    cerr << "Error: Failed to duplicate file descriptor" << endl;
+                                    exit(EXIT_FAILURE);
+                                }
+                            }
+                            if (close(pfd[i][1]) == -1) {
+                                cerr << "Error: Failed to close odd file descriptor" << endl;
+                                exit(EXIT_FAILURE);
+                            }
+                        } else {
+                            int fd = open(comm_args[i+1].c_str(), O_RDWR);
+                            if (fd == -1) {
+                                cerr << "Error: Failed to open file" << endl;
+                                exit(EXIT_FAILURE);
+                            }
+                            if (delimiters[i] == "<") {
+                                if (fd != STDIN_FILENO) {
+                                    if (dup2(fd, STDIN_FILENO) == -1) {
+                                        cerr << "Error: Failed to duplicate file descriptor" << endl;
+                                        exit(EXIT_FAILURE);
+                                    }
+                                }
+                            }
+                            if (delimiters[i] == ">" || delimiters[i] == "&>") {
+                                if (fd != STDOUT_FILENO) {
+                                    if (dup2(fd, STDOUT_FILENO) == -1) {
+                                        cerr << "Error: Failed to duplicate file descriptor" << endl;
+                                        exit(EXIT_FAILURE);
+                                    }
+                                }
+                            }
+                            if (delimiters[i] == "2>" || delimiters[i] == "&>" || (delimiters[i] == ">" && unsigned(i+1) == delimiters.size()-1 && delimiters[i+1] == "2>&1")) {
+                                if (fd != STDERR_FILENO) {
+                                    if (dup2(fd, STDERR_FILENO) == -1) {
+                                        cerr << "Error: Failed to duplicate file descriptor" << endl;
+                                        exit(EXIT_FAILURE);
+                                    }
+                                }
+                            }
+
+                            close(fd);
                         }
                     }
-                }
 
-                if (i != 0) {
-                    if (close(pfd[i - 1][1]) == -1) {
-                        cerr << "Error: Failed to close odd file descriptor" << endl;
-                        exit(EXIT_FAILURE);
-                    }
-                    if (close(pfd[i - 1][0]) == -1) {
-                        cerr << "Error: Failed to close odd file descriptor" << endl;
-                        exit(EXIT_FAILURE);
-                    }
+                    parse_line(args, comm_args[i]);
+                    if (!args.empty())
+                        execute(status, args);
                 }
-                if (i != pipe_count) {
-                    if (close(pfd[i][0]) == -1) {
-                        cerr << "Error: Failed to close odd file descriptor" << endl;
-                        exit(EXIT_FAILURE);
-                    }
-                    if (close(pfd[i][1]) == -1) {
-                        cerr << "Error: Failed to close odd file descriptor" << endl;
-                        exit(EXIT_FAILURE);
-                    }
-                }
-
-                parse_line(args, comm_args[i]);
-                if (!args.empty())
-                    execute(status, args);
-                //perror("Error: Failed to execute command");
-                //cerr << "Error: Failed to execute command" << endl;
                 exit(0);
-
             default:
                 if (i != 0) {
                     if (close(pfd[i - 1][0]) == -1) {
-                        cerr << "Error: Failed to close odd file descriptor" << endl;
+                        cerr << "Error: Failed to close odd file descriptor on parent process" << endl;
                         exit(EXIT_FAILURE);
                     }
                     if (close(pfd[i - 1][1]) == -1) {
-                        cerr << "Error: Failed to close odd file descriptor" << endl;
+                        cerr << "Error: Failed to close odd file descriptor on parent process" << endl;
                         exit(EXIT_FAILURE);
                     }
                 }
@@ -381,11 +430,9 @@ void comm_pipe(std::vector <string> &comm_args) {
         }
     }
 
-
-    for (int i = 0; i < pipe_count + 1; i++) {
-        if (wait(NULL) == -1) {
-            cerr << "Error: Failed to close odd file descriptor" << endl;
-            exit(EXIT_FAILURE);
+    if (comm_args[comm_args.size() - 1] != "&") {
+        for (int i = 0; i < pipe_count + 1; i++) {
+            signal(SIGCHLD,SIG_IGN);
         }
     }
 
