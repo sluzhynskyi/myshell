@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
         }
         if (vm.count("server")) {
             struct sockaddr_in server{};
-            char buf[1024];
+
             int sd = socket(AF_INET, SOCK_STREAM, 0);
             if (sd == -1) {
                 perror("Error: cannot open socket");
@@ -82,18 +82,16 @@ int main(int argc, char **argv) {
                 perror("Error: cannot bind socket");
             }
             listen(sd, 1);
-            int csock, cpid, status;
+            int csock, cpid;
             for (;;) {  /* loop, accepting connections */
                 if ((csock = accept(sd, NULL, NULL)) == -1) exit(1);
                 cpid = fork();
                 if (cpid == -1) {
-                    std::cerr << "Failed to fork()" << std::endl;
-                    status = -1;
+                    cerr << "Failed to fork()" << endl;
                     exit(EXIT_FAILURE);
                 } else if (cpid > 0) {
                     // We are parent process
                     close(csock); /* csock is not needed in the parent after the fork */
-                    waitpid(cpid, &status, 0);
                 } else {
                     dup2(csock, STDOUT_FILENO);  /* duplicate socket on stdout */
                     dup2(csock, STDERR_FILENO);  /* duplicate socket on stderr too */
