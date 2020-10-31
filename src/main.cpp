@@ -29,66 +29,85 @@ using std::endl;
 using std::string;
 using std::vector;
 
-using std::perror;
+namespace po = boost::program_options;
 
+using std::perror;
 using namespace boost::filesystem;
 using namespace boost::algorithm;
 using boost::tokenizer;
 using boost::escaped_list_separator;
-typedef tokenizer <escaped_list_separator<char>> my_tokenizer;
+typedef tokenizer<escaped_list_separator<char>> my_tokenizer;
 
 void myshell_execute(int argc, char **argv, int fd);
 
 void parse_commands(vector<string> &comm_args, string &comm, vector<string> &delimiters);
 
-void parse_line(std::vector <string> &args, std::string &comm);
+void parse_line(std::vector<string> &args, std::string &comm);
 
 bool is_wildcard(string &s);
 
-void comm_pipe(std::vector <string> &comm_args, vector<string> &delimiters);
+void comm_pipe(std::vector<string> &comm_args, vector<string> &delimiters);
 
 int main(int argc, char **argv) {
+    try {
+        // Declare the supported options.
+        po::options_description desc("General options");
+        desc.add_options()
+                ("help,h", "Show help")
+                ("server", "Set shell as remote")
+                ("port", po::value<int>(), "Set port number");
 
-    vector<string> main_args(argv+1, argv+argc);
-    if (std::find(main_args.begin(), main_args.end(), "--server") != main_args.end()) {
+        po::variables_map vm;
+        po::store(po::parse_command_line(argc, argv, desc), vm);
+        po::notify(vm);
 
-        struct sockaddr_in server ; char buf [1024];
-
-        int sd = socket (AF_INET, SOCK_STREAM, 0);
-        if( sd == -1 ) {
-            perror("Error: cannot open socket");
+        std::string usage = "Usage:\n  myshell [--server --port <portNumb>] \n";
+        if (vm.count("help")) {
+            std::cout << usage << desc << std::endl;
+            return EXIT_SUCCESS;
         }
-        memset(&server, 0, sizeof( server ));
-        server.sin_family = AF_INET;
-        server.sin_addr.s_addr = htonl(INADDR_ANY);
-        server.sin_port = htons(2233);
-        int res = bind( sd, (struct sockaddr *) &server, sizeof( server ) );
-        if( res == -1 ) {
-            perror("Error: cannot bind socket");
-        }
-        listen (sd ,1);
-
-        int csock, cpid;
-        for (;;) {  /* loop, accepting connections */
-            if ( (csock = accept( sd, NULL, NULL )) == -1) exit(1);
-            cpid = fork();
-            if (cpid < 0) exit(1);  /* exit if fork() fails */
-            if ( cpid ) {
-                /* In the parent process: */
-                close( csock ); /* csock is not needed in the parent after the fork */
-            } else {
-                /* In the child process: */
-
-                dup2( csock, STDOUT_FILENO );  /* duplicate socket on stdout */
-                dup2( csock, STDERR_FILENO );  /* duplicate socket on stderr too */
-
-                close( csock );  /* can close the original after it's duplicated */
-                myshell_execute(argc, argv, csock);
+        if (vm.count("server")) {
+            struct sockaddr_in server{};
+            char buf[1024];
+            int sd = socket(AF_INET, SOCK_STREAM, 0);
+            if (sd == -1) {
+                perror("Error: cannot open socket");
             }
-        }
+            memset(&server, 0, sizeof(server));
+            server.sin_family = AF_INET;
+            server.sin_addr.s_addr = htonl(INADDR_ANY);
+            server.sin_port = htons(vm["port"].as<int>());
+            int res = bind(sd, (struct sockaddr *) &server, sizeof(server));
+            if (res == -1) {
+                perror("Error: cannot bind socket");
+            }
+            listen(sd, 1);
+            int csock, cpid, status;
+            for (;;) {  /* loop, accepting connections */
+                if ((csock = accept(sd, NULL, NULL)) == -1) exit(1);
+                cpid = fork();
+                if (cpid == -1) {
+                    std::cerr << "Failed to fork()" << std::endl;
+                    status = -1;
+                    exit(EXIT_FAILURE);
+                } else if (cpid > 0) {
+                    // We are parent process
+                    close(csock); /* csock is not needed in the parent after the fork */
+                    waitpid(cpid, &status, 0);
+                } else {
+                    dup2(csock, STDOUT_FILENO);  /* duplicate socket on stdout */
+                    dup2(csock, STDERR_FILENO);  /* duplicate socket on stderr too */
 
-    } else {
-        myshell_execute(argc, argv, 0);
+                    myshell_execute(argc, argv, csock);
+                    close(csock);  /* can close the original after it's duplicated */
+                }
+            }
+
+        } else {
+            myshell_execute(argc, argv, 0);
+        }
+    } catch (const std::exception &ex) {
+        std::cerr << ex.what() << std::endl;
     }
     return 0;
 
@@ -109,14 +128,14 @@ void myshell_execute(int argc, char **argv, int fd) {
     while (1) {
         vector<string> comm_args;
         vector<string> delimiters;
-        vector<string> main_args(argv+1, argv+argc);
+        vector<string> main_args(argv + 1, argv + argc);
         if (argc > 1 && std::find(main_args.begin(), main_args.end(), "--server") == main_args.end()) {
             if (!getline(script_input, comm))
                 break;
         } else {
             char buff[FILENAME_MAX];
             getcwd(buff, FILENAME_MAX);
-            char full_buff[FILENAME_MAX+2];
+            char full_buff[FILENAME_MAX + 2];
             strcpy(full_buff, buff);
             strcat(full_buff, "$ ");
             if (fd == 0) {
@@ -125,8 +144,8 @@ void myshell_execute(int argc, char **argv, int fd) {
             } else {
                 cout << full_buff << flush;
                 char buf[1024];
-                int cc=recv(fd,buf, sizeof(buf ), 0);
-                if (cc == 0) exit (EXIT_SUCCESS);
+                int cc = recv(fd, buf, sizeof(buf), 0);
+                if (cc == 0) exit(EXIT_SUCCESS);
                 buf[cc] = '\0';
                 comm = buf;
             }
@@ -136,7 +155,7 @@ void myshell_execute(int argc, char **argv, int fd) {
         parse_commands(comm_args, comm, delimiters);
 
         if (delimiters.empty()) {
-            std::vector <string> args;
+            std::vector<string> args;
             parse_line(args, comm);
             if (!args.empty())
                 execute(status, args);
@@ -146,7 +165,7 @@ void myshell_execute(int argc, char **argv, int fd) {
     }
 }
 
-void execute(int &status, vector <string> args) {
+void execute(int &status, vector<string> args) {
     string program_name = args[0];
     vector<const char *> arg_for_c;
     arg_for_c.reserve(args.size());
@@ -224,7 +243,7 @@ void execute(int &status, vector <string> args) {
                     "Виклик mexport var_name=    створює порожню змінну -- це не помилка.\n" << endl;
         } else {
             if (args.size() < 3) {
-                vector <string> envvar_args;
+                vector<string> envvar_args;
                 boost::split(envvar_args, args[1], boost::is_any_of("="));
                 status = mexport(envvar_args[0], envvar_args[1]);
             } else {
@@ -237,7 +256,7 @@ void execute(int &status, vector <string> args) {
         std::ifstream script_input(args[1]);
 
         for (std::string script_line; getline(script_input, script_line);) {
-            std::vector <string> script_args;
+            std::vector<string> script_args;
 
             parse_line(script_args, script_line);
             if (!script_args.empty()) {
@@ -284,7 +303,7 @@ void execute(int &status, vector <string> args) {
     }
 }
 
-void parse_commands(std::vector <string> &comm_args, std::string &comm, std::vector <string> &delimiters) {
+void parse_commands(std::vector<string> &comm_args, std::string &comm, std::vector<string> &delimiters) {
     vector<string> const delims{"|", "<", ">", "2>", "&>", "2>&1"};
     boost::algorithm::trim(comm);
     vector<string> temp_args;
@@ -310,18 +329,18 @@ void parse_commands(std::vector <string> &comm_args, std::string &comm, std::vec
         }
     }
 
-    if (comm_args[comm_args.size()-1].find('&') != string::npos  && comm_args[comm_args.size()-1] != "&") {
+    if (comm_args[comm_args.size() - 1].find('&') != string::npos && comm_args[comm_args.size() - 1] != "&") {
         vector<string> temp_vec;
-        boost::split(temp_vec,comm_args[comm_args.size()-1],boost::is_any_of("&"));
-        comm_args[comm_args.size()-1] = temp_vec[0];
+        boost::split(temp_vec, comm_args[comm_args.size() - 1], boost::is_any_of("&"));
+        comm_args[comm_args.size() - 1] = temp_vec[0];
         comm_args.emplace_back("&");
     }
 }
 
 
-void parse_line(std::vector <string> &args, std::string &comm) {
-    vector <string> tmp;
-    vector <string> arg_with_eq;
+void parse_line(std::vector<string> &args, std::string &comm) {
+    vector<string> tmp;
+    vector<string> arg_with_eq;
     path p;
     std::string filename;
     std::string dir;
@@ -375,7 +394,7 @@ void parse_line(std::vector <string> &args, std::string &comm) {
 
 }
 
-void comm_pipe(vector <string> &comm_args, vector<string> &delimiters) {
+void comm_pipe(vector<string> &comm_args, vector<string> &delimiters) {
 
     const int comm_count = comm_args[comm_args.size() - 1] == "&" ? comm_args.size() - 1 : comm_args.size();
 
@@ -402,7 +421,7 @@ void comm_pipe(vector <string> &comm_args, vector<string> &delimiters) {
                 cerr << "Error: Failed to fork process" << endl;
                 exit(EXIT_FAILURE);
             case 0:
-                if (!(i == pipe_count && delimiters[i-1] != "|")) {
+                if (!(i == pipe_count && delimiters[i - 1] != "|")) {
                     if (i != 0) {
                         if (close(pfd[i - 1][1]) == -1) {
                             cerr << "Error: Failed to close odd file descriptor" << endl;
@@ -438,7 +457,7 @@ void comm_pipe(vector <string> &comm_args, vector<string> &delimiters) {
                                 exit(EXIT_FAILURE);
                             }
                         } else {
-                            int fd = open(comm_args[i+1].c_str(), O_RDWR);
+                            int fd = open(comm_args[i + 1].c_str(), O_RDWR);
                             if (fd == -1) {
                                 cerr << "Error: Failed to open file" << endl;
                                 exit(EXIT_FAILURE);
@@ -459,7 +478,9 @@ void comm_pipe(vector <string> &comm_args, vector<string> &delimiters) {
                                     }
                                 }
                             }
-                            if (delimiters[i] == "2>" || delimiters[i] == "&>" || (delimiters[i] == ">" && unsigned(i+1) == delimiters.size()-1 && delimiters[i+1] == "2>&1")) {
+                            if (delimiters[i] == "2>" || delimiters[i] == "&>" ||
+                                (delimiters[i] == ">" && unsigned(i + 1) == delimiters.size() - 1 &&
+                                 delimiters[i + 1] == "2>&1")) {
                                 if (fd != STDERR_FILENO) {
                                     if (dup2(fd, STDERR_FILENO) == -1) {
                                         cerr << "Error: Failed to duplicate file descriptor" << endl;
@@ -494,7 +515,7 @@ void comm_pipe(vector <string> &comm_args, vector<string> &delimiters) {
 
     if (comm_args[comm_args.size() - 1] != "&") {
         for (int i = 0; i < pipe_count + 1; i++) {
-            signal(SIGCHLD,SIG_IGN);
+            signal(SIGCHLD, SIG_IGN);
         }
     }
 
