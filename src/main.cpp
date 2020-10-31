@@ -19,6 +19,9 @@
 #include <string>
 #include "commands/commands.hpp"
 
+#include <sys/socket.h>
+#include <arpa/inet.h>
+
 using std::cout;
 using std::cerr;
 using std::flush;
@@ -34,6 +37,8 @@ using boost::tokenizer;
 using boost::escaped_list_separator;
 typedef tokenizer <escaped_list_separator<char>> my_tokenizer;
 
+void myshell_execute(int argc, char **argv, int fd);
+
 void parse_commands(vector<string> &comm_args, string &comm, vector<string> &delimiters);
 
 void parse_line(std::vector <string> &args, std::string &comm);
@@ -43,6 +48,53 @@ bool is_wildcard(string &s);
 void comm_pipe(std::vector <string> &comm_args, vector<string> &delimiters);
 
 int main(int argc, char **argv) {
+
+    vector<string> main_args(argv+1, argv+argc);
+    if (std::find(main_args.begin(), main_args.end(), "--server") != main_args.end()) {
+
+        struct sockaddr_in server ; char buf [1024];
+
+        int sd = socket (AF_INET, SOCK_STREAM, 0);
+        if( sd == -1 ) {
+            perror("Error: cannot open socket");
+        }
+        memset(&server, 0, sizeof( server ));
+        server.sin_family = AF_INET;
+        server.sin_addr.s_addr = htonl(INADDR_ANY);
+        server.sin_port = htons(2233);
+        int res = bind( sd, (struct sockaddr *) &server, sizeof( server ) );
+        if( res == -1 ) {
+            perror("Error: cannot bind socket");
+        }
+        listen (sd ,1);
+
+        int csock, cpid;
+        for (;;) {  /* loop, accepting connections */
+            if ( (csock = accept( sd, NULL, NULL )) == -1) exit(1);
+            cpid = fork();
+            if (cpid < 0) exit(1);  /* exit if fork() fails */
+            if ( cpid ) {
+                /* In the parent process: */
+                close( csock ); /* csock is not needed in the parent after the fork */
+            } else {
+                /* In the child process: */
+
+                dup2( csock, STDOUT_FILENO );  /* duplicate socket on stdout */
+                dup2( csock, STDERR_FILENO );  /* duplicate socket on stderr too */
+
+                close( csock );  /* can close the original after it's duplicated */
+                myshell_execute(argc, argv, csock);
+            }
+        }
+
+    } else {
+        myshell_execute(argc, argv, 0);
+    }
+    return 0;
+
+}
+
+void myshell_execute(int argc, char **argv, int fd) {
     std::string comm;
     int status;
     auto path_ptr = getenv("PATH");
@@ -55,18 +107,30 @@ int main(int argc, char **argv) {
 
 
     while (1) {
-
         vector<string> comm_args;
         vector<string> delimiters;
-        if (argc > 1) {
+        vector<string> main_args(argv+1, argv+argc);
+        if (argc > 1 && std::find(main_args.begin(), main_args.end(), "--server") == main_args.end()) {
             if (!getline(script_input, comm))
                 break;
         } else {
             char buff[FILENAME_MAX];
             getcwd(buff, FILENAME_MAX);
-            cout << buff << flush;
-            comm = readline("$ ");
-            add_history(comm.c_str());
+            char full_buff[FILENAME_MAX+2];
+            strcpy(full_buff, buff);
+            strcat(full_buff, "$ ");
+            if (fd == 0) {
+                comm = readline(full_buff);
+                add_history(comm.c_str());
+            } else {
+                cout << full_buff << flush;
+                char buf[1024];
+                int cc=recv(fd,buf, sizeof(buf ), 0);
+                if (cc == 0) exit (EXIT_SUCCESS);
+                buf[cc] = '\0';
+                comm = buf;
+            }
+
         }
 
         parse_commands(comm_args, comm, delimiters);
@@ -80,8 +144,6 @@ int main(int argc, char **argv) {
             comm_pipe(comm_args, delimiters);
         }
     }
-    return 0;
-
 }
 
 void execute(int &status, vector <string> args) {
